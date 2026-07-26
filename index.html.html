@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>World Capitals Quiz - Pro</title>
+<style>
+  body {font-family: system-ui; margin: 0; min-height: 100vh; display: flex; justify-content: center; align-items: center; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #f8fafc;}
+.game {background: rgba(30, 41, 59, 0.95); padding: 28px; border-radius: 20px; width: 90%; max-width: 540px; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,0.5);}
+.stats { display: flex; justify-content: space-between; margin-bottom: 16px; font-size: 15px; }
+.flag { font-size: 70px; margin: 10px auto; min-height: 80px; }
+.question { font-size: 20px; margin: 15px 0; font-weight: 600; min-height: 50px; }
+.btn { display: block; width: 100%; padding: 14px; margin: 10px 0; background: #334155; border: none; border-radius: 12px; color: #e2e8f0; font-size: 16px; cursor: pointer; }
+.btn:hover { background: #475569; }
+.btn.correct { background: #16a34a; }.btn.wrong { background: #dc2626; }.btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.action-btn { display: block; width: 100%; padding: 14px; margin: 10px 0; background: #3b82f6; border: none; border-radius: 12px; color: white; font-weight: 700; cursor: pointer; }
+.level-select button { margin: 8px; padding: 12px; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; width: 90%; }
+.level-easy { background: #16a34a; color: white; }
+.level-normal { background: #f59e0b; color: white; }
+.level-hard { background: #dc2626; color: white; }
+.level-normal.locked,.level-hard.locked { background: #475569; cursor: not-allowed; }
+.highscore { font-size: 12px; color: #fbbf24; margin-top: 3px; }
+.lock-msg { font-size: 12px; color: #94a3b8; }
+#levelBadge { padding: 4px 10px; border-radius: 8px; }
+.mode-toggle button { margin: 0 4px; padding: 10px 14px; border: none; border-radius: 10px; background: #334155; color: #e2e8f0; cursor: pointer; }
+.mode-toggle button.active { background: #3b82f6; }
+</style>
+</head>
+<body>
+<div class="game">
+  <h1>🌍 World Capitals Quiz</h1>
+
+  <div id="menu">
+    <h2>Choose Difficulty</h2>
+    <div class="level-select">
+      <button class="level-easy" onclick="startGame('easy')">EASY<br>10 Questions<div class="highscore" id="hs-easy">High Score: 0/10</div></button>
+      <button id="btn-normal" class="level-normal locked" onclick="startGame('normal')">NORMAL<br>20 Questions<div class="highscore" id="hs-normal">High Score: 0/20</div><span class="lock-msg">Score 8/10 in Easy</span></button>
+      <button id="btn-hard" class="level-hard locked" onclick="startGame('hard')">HARD<br>30 Questions<div class="highscore" id="hs-hard">High Score: 0/30</div><span class="lock-msg">Score 16/20 in Normal</span></button>
+    </div>
+    <div class="mode-toggle" style="margin-top:15px;">
+      <button id="mode-country" class="active" onclick="setMode('country')">Country → Capital</button>
+      <button id="mode-capital" onclick="setMode('capital')">Capital → Country</button>
+    </div>
+  </div>
+
+  <div id="game-area" style="display:none;">
+    <div class="stats">
+      <span>Score: <b id="score">0</b></span>
+      <span id="levelBadge">EASY</span>
+      <span>Time: <b id="timer">15</b>s</span>
+      <span>Q: <b id="qnum">1</b>/<b id="qtotal">10</b></span>
+    </div>
+    <div id="flag" class="flag"></div>
+    <div class="question" id="question">Loading...</div>
+    <div id="answers"></div>
+    <button class="action-btn" id="nextBtn" onclick="newQuestion()" style="display:none;">Next</button>
+    <button class="action-btn" id="restartBtn" onclick="goToMenu()" style="display:none;">Back to Menu</button>
+  </div>
+</div>
+
+<script>
+// SOUND SYSTEM
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function playSound(type) {
+  const osc = audioCtx.createOscillator();
+  const gainNode = audioCtx.createGain();
+  osc.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+
+  if(type === "correct") {
+    osc.frequency.value = 600; // Ding
+    gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+  } else {
+    osc.frequency.value = 150; // Buzz
+    gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+  }
+  osc.start();
+  osc.stop(audioCtx.currentTime + 0.4);
+}
+
+const flagEmojis = {
+  ng:"🇳🇬", gh:"🇬🇭", ke:"🇰🇪", za:"🇿🇦", eg:"🇪🇬", ma:"🇲🇦", et:"🇪🇹", dz:"🇩🇿", tz:"🇹🇿", ug:"🇺🇬", sn:"🇸🇳", ci:"🇨🇮",
+  us:"🇺🇸", ca:"🇨🇦", mx:"🇲🇽", br:"🇧🇷", ar:"🇦🇷", co:"🇨🇴", cl:"🇨🇱", pe:"🇵🇪", ve:"🇻🇪",
+  gb:"🇬🇧", fr:"🇫🇷", de:"🇩🇪", it:"🇮🇹", es:"🇪🇸", pl:"🇵🇱", nl:"🇳🇱", se:"🇸🇪", no:"🇳🇴", gr:"🇬🇷", pt:"🇵🇹", ch:"🇨🇭",
+  cn:"🇨🇳", in:"🇮🇳", jp:"🇯🇵", kr:"🇰🇷", au:"🇦🇺", sa:"🇸🇦", tr:"🇹🇷", id:"🇮🇩", th:"🇹🇭", vn:"🇻🇳", ph:"🇵🇭", my:"🇲🇾", sg:"🇸🇬"
+};
+
+// SPLIT DATA - NO REPEATS
+const easyData = [
+  {country:"Nigeria",capital:"Abuja",code:"ng"},{country:"Ghana",capital:"Accra",code:"gh"},{country:"Kenya",capital:"Nairobi",code:"ke"},
+  {country:"South Africa",capital:"Pretoria",code:"za"},{country:"Egypt",capital:"Cairo",code:"eg"},{country:"United States",capital:"Washington D.C.",code:"us"},
+  {country:"Canada",capital:"Ottawa",code:"ca"},{country:"United Kingdom",capital:"London",code:"gb"},{country:"France",capital:"Paris",code:"fr"},
+  {country:"Germany",capital:"Berlin",code:"de"},{country:"China",capital:"Beijing",code:"cn"},{country:"Japan",capital:"Tokyo",code:"jp"}
+];
+const normalData = [
+  {country:"Morocco",capital:"Rabat",code:"ma"},{country:"Ethiopia",capital:"Addis Ababa",code:"et"},{country:"Senegal",capital:"Dakar",code:"sn"},
+  {country:"Ivory Coast",capital:"Yamoussoukro",code:"ci"},{country:"Mexico",capital:"Mexico City",code:"mx"},{country:"Brazil",capital:"Brasília",code:"br"},
+  {country:"Argentina",capital:"Buenos Aires",code:"ar"},{country:"Colombia",capital:"Bogotá",code:"co"},{country:"Italy",capital:"Rome",code:"it"},
+  {country:"Spain",capital:"Madrid",code:"es"},{country:"Portugal",capital:"Lisbon",code:"pt"},{country:"India",capital:"New Delhi",code:"in"},
+  {country:"South Korea",capital:"Seoul",code:"kr"},{country:"Australia",capital:"Canberra",code:"au"},{country:"Saudi Arabia",capital:"Riyadh",code:"sa"}
+];
+const hardData = [
+  {country:"Tanzania",capital:"Dodoma",code:"tz"},{country:"Algeria",capital:"Algiers",code:"dz"},{country:"Uganda",capital:"Kampala",code:"ug"},
+  {country:"Chile",capital:"Santiago",code:"cl"},{country:"Peru",capital:"Lima",code:"pe"},{country:"Venezuela",capital:"Caracas",code:"ve"},
+  {country:"Poland",capital:"Warsaw",code:"pl"},{country:"Netherlands",capital:"Amsterdam",code:"nl"},{country:"Sweden",capital:"Stockholm",code:"se"},
+  {country:"Norway",capital:"Oslo",code:"no"},{country:"Greece",capital:"Athens",code:"gr"},{country:"Switzerland",capital:"Bern",code:"ch"},
+  {country:"Turkey",capital:"Ankara",code:"tr"},{country:"Indonesia",capital:"Jakarta",code:"id"},{country:"Thailand",capital:"Bangkok",code:"th"},
+  {country:"Vietnam",capital:"Hanoi",code:"vn"},{country:"Philippines",capital:"Manila",code:"ph"},{country:"Malaysia",capital:"Kuala Lumpur",code:"my"},
+  {country:"Singapore",capital:"Singapore",code:"sg"}
+];
+const allData = [...easyData,...normalData,...hardData];
+
+let score = 0, qnum = 0, qtotal = 10, current, used = [], timer, timeLeft = 15, level = "easy", levelData = [], mode = "country";
+let unlocked = JSON.parse(localStorage.getItem('quizUnlocked')) || {normal: false, hard: false};
+let highscores = JSON.parse(localStorage.getItem('quizHighscores')) || {easy: 0, normal: 0, hard: 0};
+
+function shuffle(arr) { return arr.sort(() => Math.random() - 0.5); }
+function saveData() {
+  localStorage.setItem('quizUnlocked', JSON.stringify(unlocked));
+  localStorage.setItem('quizHighscores', JSON.stringify(highscores));
+}
+function updateMenu() {
+  document.getElementById("btn-normal").classList.toggle("locked",!unlocked.normal);
+  document.getElementById("btn-normal").disabled =!unlocked.normal;
+  document.getElementById("btn-hard").classList.toggle("locked",!unlocked.hard);
+  document.getElementById("btn-hard").disabled =!unlocked.hard;
+  document.getElementById("hs-easy").textContent = `High Score: ${highscores.easy}/10`;
+  document.getElementById("hs-normal").textContent = `High Score: ${highscores.normal}/20`;
+  document.getElementById("hs-hard").textContent = `High Score: ${highscores.hard}/30`;
+}
+
+function setMode(m) {
+  mode = m;
+  document.getElementById("mode-country").classList.toggle("active", m==="country");
+  document.getElementById("mode-capital").classList.toggle("active", m==="capital");
+}
+
+function startGame(lvl) {
+  if(lvl==="normal" &&!unlocked.normal) return alert("Complete Easy with 8/10 first!");
+  if(lvl==="hard" &&!unlocked.hard) return alert("Complete Normal with 16/20 first!");
+  level = lvl;
+  if(lvl === "easy") {qtotal = 10; levelData = easyData;}
+  if(lvl === "normal") {qtotal = 20; levelData = normalData;}
+  if(lvl === "hard") {qtotal = 30; levelData = hardData;}
+  document.getElementById("menu").style.display = "none";
+  document.getElementById("game-area").style.display = "block";
+  document.getElementById("qtotal").textContent = qtotal;
+  document.getElementById("levelBadge").textContent = lvl.toUpperCase();
+  document.getElementById("levelBadge").style.background = lvl==="easy"?"#16a34a":lvl==="normal"?"#f59e0b":"#dc2626";
+  restart();
+}
+
+function goToMenu() {
+  document.getElementById("menu").style.display = "block";
+  document.getElementById("game-area").style.display = "none";
+  updateMenu();
+}
+
+function restart() {
+  score = 0; qnum = 0; used = [];
+  document.getElementById("score").textContent = 0;
+  document.getElementById("restartBtn").style.display = "none";
+  newQuestion();
+}
+
+function startTimer() {
+  timeLeft = level === "hard"? 10 : 15;
+  document.getElementById("timer").textContent = timeLeft;
+  clearInterval(timer);
+  timer = setInterval(() => {
+    timeLeft--;
+    document.getElementById("timer").textContent = timeLeft;
+    if (timeLeft <= 0) { clearInterval(timer); timeUp(); }
+  }, 1000);
+}
+
+function timeUp() {
+  document.querySelectorAll(".btn").forEach(b => b.disabled = true);
+  playSound("wrong"); // BUZZ ON TIMEUP
+  document.getElementById("nextBtn").style.display = "block";
+}
+
+function newQuestion() {
+  clearInterval(timer);
+  if (qnum >= qtotal) return endGame();
+  let pool = levelData.filter(d =>!used.includes(d.country));
+  if (pool.length < 4) { used = []; pool = levelData; }
+  current = shuffle(pool)[0];
+  used.push(current.country);
+  qnum++;
+  document.getElementById("qnum").textContent = qnum;
+
+  let questionText, correct, options;
+  const flagDiv = document.getElementById("flag");
+
+  if (mode === "country") {
+    questionText = `What is the capital of ${current.country}?`;
+    flagDiv.textContent = flagEmojis[current.code] || "";
+    flagDiv.style.display = "block";
+    correct = current.capital;
+  } else {
+    questionText = `Which country has ${current.capital} as its capital?`;
+    flagDiv.style.display = "none";
+    correct = current.country;
+  }
+
+  let wrongPool = allData.filter(d => d.country!== current.country);
+  if(level === "hard") {
+    wrongPool = allData.filter(d => d.country!== current.country && d.code.slice(0,1) === current.code.slice(0,1));
+    if(wrongPool.length < 3) wrongPool = allData.filter(d => d.country!== current.country);
+  }
+
+  options = shuffle([correct,...shuffle(wrongPool).slice(0,3).map(d => mode==="country"?d.capital:d.country)]);
+
+  document.getElementById("question").textContent = questionText;
+  const answersDiv = document.getElementById("answers");
+  answersDiv.innerHTML = "";
+  options.forEach(opt => {
+    const btn = document.createElement("button");
+    btn.className = "btn";
+    btn.textContent = opt;
+    btn.onclick = () => checkAnswer(btn, opt, correct);
+    answersDiv.appendChild(btn);
+  });
+  document.getElementById("nextBtn").style.display = "none";
+  startTimer();
+}
+
+function checkAnswer(btn, choice, correct) {
+  clearInterval(timer);
+  document.querySelectorAll(".btn").forEach(b => b.disabled = true);
+  if (choice === correct) {
+    btn.classList.add("correct");
+    score += 1;
+    document.getElementById("score").textContent = score;
+    playSound("correct"); // DING
+  } else {
+    btn.classList.add("wrong");
+    playSound("wrong"); // BUZZ
+    let correctBtn = [...document.querySelectorAll(".btn")].find(b => b.textContent === correct);
+    if(correctBtn) correctBtn.classList.add("correct");
+  }
+  document.getElementById("nextBtn").style.display = "block";
+}
+
+function endGame() {
+  clearInterval(timer);
+  let msg = `Game Over! Final Score: ${score}/${qtotal}`;
+  if(score > highscores[level]) {highscores[level] = score; msg += "\n\n🏆 NEW HIGH SCORE!";}
+  if(level === "easy" && score >= 8 &&!unlocked.normal) {unlocked.normal = true; msg += "\n\n🎉 NORMAL UNLOCKED!";}
+  if(level === "normal" && score >= 16 &&!unlocked.hard) {unlocked.hard = true; msg += "\n\n🔥 HARD UNLOCKED!";}
+  saveData();
+  document.getElementById("question").textContent = msg;
+  document.getElementById("answers").innerHTML = "";
+  document.getElementById("flag").style.display = "none";
+  document.getElementById("nextBtn").style.display = "none";
+  document.getElementById("restartBtn").style.display = "block";
+}
+
+updateMenu();
+</script>
+</body>
+</html>
